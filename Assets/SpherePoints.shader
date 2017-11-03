@@ -1,72 +1,72 @@
-﻿Shader "SpherePoints"
+﻿Shader "/Hidden/SpherePoints"
 {
-    CGINCLUDE
+    HLSLINCLUDE
 
-    #pragma multi_compile _ _STRICT
-
-    #include "UnityCG.cginc"
-
-    float _PointSize;
-
-    // Utility for sin/cos
-    float2 CosSin(float theta)
+    // Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
+    uint Hash(uint s)
     {
-        float sn, cs;
-        sincos(theta, sn, cs);
-        return float2(cs, sn);
+        s ^= 2747636419u;
+        s *= 2654435769u;
+        s ^= s >> 16;
+        s *= 2654435769u;
+        s ^= s >> 16;
+        s *= 2654435769u;
+        return s;
+    }
+
+    float Random(uint seed)
+    {
+        return float(Hash(seed)) / 4294967295.0; // 2^32-1
     }
 
     // Uniformaly distributed points on a unit sphere
     // http://mathworld.wolfram.com/SpherePointPicking.html
-    // https://en.wikibooks.org/wiki/Mathematica/Uniform_Spherical_Distribution
-    float3 PointPosition(float3 coord)
+    float3 RandomOnSphere(uint seed)
     {
-    #if _STRICT
-        float theta = coord.y * UNITY_PI * 2;
-        float phi = asin(sqrt(coord.x)) * 2;
-        float2 A = CosSin(theta);
-        float2 B = CosSin(phi);
-        return float3(B.y * A.x, B.y * A.y, B.x);
-    #else
-        float u = coord.x * 2 - 1;
-        float theta = coord.y * UNITY_PI * 2;
-        return float3(CosSin(theta) * sqrt(1 - u * u), u);
-    #endif
+        float PI2 = 6.28318530718;
+        float z = 1 - 2 * Random(seed);
+        float xy = sqrt(1.0 - z * z);
+        float sn, cs;
+        sincos(PI2 * Random(seed + 32894305u), sn, cs);
+        return float3(sn * xy, cs * xy, z);
     }
 
-    float3 PointOffset(float3 coord)
+    // Uniformaly distributed points inside a unit sphere
+    float3 RandomInsideSphere(uint seed)
     {
-        float z = coord.z;
-        float aspect = _ScreenParams.x / _ScreenParams.y;
-        float dx = fmod(z, 2);
-        float dy = floor(z / 2) * aspect;
-        return float3(dx, dy, 0) * _PointSize;
+        return RandomOnSphere(seed) * sqrt(Random(seed + 83721014u));
     }
 
-    float4 vert(appdata_base v) : SV_POSITION
-    {
-        float3 coord = v.vertex.xyz;
-        float4 pos = float4(PointPosition(coord), 1);
-        pos = mul(UNITY_MATRIX_MVP, pos);
-        pos.xyz += PointOffset(coord);
-        return pos;
-    }
+    ENDHLSL
 
-    fixed4 frag() : SV_Target
-    {
-        return 1;
-    }
-
-    ENDCG
     SubShader
     {
         Pass
         {
-            Cull Off
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            ENDCG
+            HLSLPROGRAM
+
+            #pragma vertex Vertex
+            #pragma fragment Fragment
+            #pragma multi_compile _ _INSIDE_SPHERE
+
+            #include "UnityCG.cginc"
+
+            float4 Vertex(uint vid : SV_VertexID) : SV_Position
+            {
+            #if _INSIDE_SPHERE
+                float3 pos = RandomInsideSphere(vid);
+            #else
+                float3 pos = RandomOnSphere(vid);
+            #endif
+                return UnityObjectToClipPos(float4(pos, 1));
+            }
+
+            half4 Fragment() : SV_Target
+            {
+                return 1;
+            }
+
+            ENDHLSL
         }
     }
 }

@@ -1,84 +1,40 @@
 ﻿using UnityEngine;
-using System.Collections.Generic;
 
 [ExecuteInEditMode]
 public class PointRenderer : MonoBehaviour
 {
-    [SerializeField]
-    int _pointCount = 100;
+    enum Mode { OnSphere, InsideSphere }
 
-    [SerializeField]
-    float _pointSize = 0.1f;
+    [SerializeField] int _pointCount = 100;
+    [SerializeField] Mode _mode;
 
-    [SerializeField]
-    bool _strictlyUniform;
-
-    [SerializeField]
-    Shader _shader;
-
+    [SerializeField, HideInInspector] Shader _shader;
     Material _material;
-    Mesh _mesh;
 
-    void OnEnable()
+    void OnDestroy()
     {
-        var shader = Shader.Find("SpherePoints");
+        if (_material != null)
+            if (Application.isPlaying)
+                Destroy(_material);
+            else
+                DestroyImmediate(_material);
+    }
 
-        _material = new Material(shader);
-        _material.hideFlags = HideFlags.DontSave;
-
-        var hash = new Klak.Math.XXHash(123);
-
-        var va = new List<Vector3>();
-        var ia = new List<int>();
-
-        for (var i = 0; i < _pointCount; i++)
+    void OnRenderObject()
+    {
+        if (_material == null)
         {
-            var rand1 = hash.Value01(i * 2);
-            var rand2 = hash.Value01(i * 2 + 1);
-
-            var vi = va.Count;
-
-            va.Add(new Vector3(rand1, rand2, 0));
-            va.Add(new Vector3(rand1, rand2, 1));
-            va.Add(new Vector3(rand1, rand2, 2));
-            va.Add(new Vector3(rand1, rand2, 3));
-
-            ia.Add(vi);
-            ia.Add(vi + 1);
-            ia.Add(vi + 2);
-
-            ia.Add(vi + 1);
-            ia.Add(vi + 3);
-            ia.Add(vi + 2);
+            _material = new Material(_shader);
+            _material.hideFlags = HideFlags.DontSave;
         }
 
-        _mesh = new Mesh();
-        _mesh.name = "Points";
-        _mesh.hideFlags = HideFlags.DontSave;
-        _mesh.vertices = va.ToArray();
-        _mesh.SetIndices(ia.ToArray(), MeshTopology.Triangles, 0);
-        _mesh.bounds = new Bounds(Vector3.zero, Vector3.one);
-        _mesh.UploadMeshData(true);
-    }
+        _material.SetPass(0);
 
-    void OnDisable()
-    {
-        DestroyImmediate(_material);
-        DestroyImmediate(_mesh);
-    }
-
-    void Update()
-    {
-        _material.SetFloat("_PointSize", _pointSize);
-
-        if (_strictlyUniform)
-            _material.EnableKeyword("_STRICT");
+        if (_mode == Mode.InsideSphere)
+            _material.EnableKeyword("_INSIDE_SPHERE");
         else
-            _material.DisableKeyword("_STRICT");
+            _material.DisableKeyword("_INSIDE_SPHERE");
 
-        Graphics.DrawMesh(
-            _mesh, transform.localToWorldMatrix,
-            _material, gameObject.layer
-        );
+        Graphics.DrawProcedural(MeshTopology.Points, _pointCount);
     }
 }
